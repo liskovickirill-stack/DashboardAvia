@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Дашборд эффективности</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #161a23;
+    --card: #1b202b;
+    --card2: #202634;
+    --text: #e8ecf4;
+    --muted: #8b93a7;
+    --green: #34d399;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --violet: #a78bfa;
+    --border: #2a3140;
+    --shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 80% -10%, #1c2333 0%, var(--bg) 55%);
+    color: var(--text);
+    padding: 28px;
+    min-height: 100vh;
+  }
+  .container { max-width: 1200px; margin: 0 auto; }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 26px;
+  }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+  h1 .accent { color: var(--blue); }
+  .updated { color: var(--muted); font-size: 13px; }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 16px;
+    margin-bottom: 30px;
+  }
+  .card {
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .card .label { font-size: 13px; color: var(--muted); margin-bottom: 10px; letter-spacing: 0.02em; }
+  .card .value { font-size: 36px; font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; }
+  .card .sub { font-size: 13px; margin-top: 8px; color: var(--muted); }
+  .card .diff { font-weight: 600; }
+  .ok { color: var(--green); }
+  .bad { color: var(--red); }
+  .bar {
+    height: 8px;
+    background: #2a3140;
+    border-radius: 6px;
+    margin-top: 14px;
+    overflow: hidden;
+  }
+  .bar > div { height: 100%; border-radius: 6px; }
+  .bar .ok { background: linear-gradient(90deg, #10b981, #34d399); }
+  .bar .bad { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+  .groups {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .group {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .group.lena { border-top: 3px solid var(--blue); }
+  .group.liza { border-top: 3px solid var(--violet); }
+  .group-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .group-title { font-size: 18px; font-weight: 800; }
+  .group-title .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+  .group.lena .dot { background: var(--blue); }
+  .group.liza .dot { background: var(--violet); }
+  .group-rate { font-size: 15px; font-weight: 700; }
+  .group-rate .ok { color: var(--green); }
+  .group-rate .bad { color: var(--red); }
+
+  .emp {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--card2);
+    margin-bottom: 10px;
+  }
+  .emp:last-child { margin-bottom: 0; }
+  .emp .name { font-size: 14px; font-weight: 600; }
+  .emp .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .emp .rate { font-size: 18px; font-weight: 800; }
+  .emp .rate .ok { color: var(--green); }
+  .emp .rate .bad { color: var(--red); }
+  .emp .mini-bar {
+    height: 5px; background: #2a3140; border-radius: 4px; margin-top: 6px; overflow: hidden;
+  }
+  .emp .mini-bar > div { height: 100%; border-radius: 4px; }
+  .emp .mini-bar .ok { background: var(--green); }
+  .emp .mini-bar .bad { background: var(--red); }
+
+  .loading, .error {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .error { color: var(--red); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 24px; text-align: center; }
+
+  @media (max-width: 800px) {
+    .groups { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>📊 Дашборд <span class="accent">эффективности</span></h1>
+    <div class="updated" id="updated">Загрузка данных…</div>
+  </header>
+
+  <div id="content">
+    <div class="loading">Загружаю данные из таблицы…</div>
+  </div>
+
+  <div class="note">Данные обновляются автоматически из Google-таблицы при каждом открытии страницы.</div>
+</div>
+
+<script>
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=557967994';
+
+function num(v) {
+  return (typeof v === 'number') ? v : null;
+}
+
+function fmt(n, digits) {
+  if (n == null) return '—';
+  return n.toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function pct(n) {
+  if (n == null) return '—';
+  return (n * 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+}
+
+async function loadData() {
+  const resp = await fetch(SHEET_URL);
+  const text = await resp.text();
+  const jsonStr = text.substring(text.indexOf('(') + 1, text.lastIndexOf(')'));
+  const data = JSON.parse(jsonStr);
+  return data.table.rows;
+}
+
+function parse(rows) {
+  const employees = [];
+  for (const r of rows) {
+    const c = r.c;
+    const fullName = c[0] && c[0].v;
+    const group = c[4] && c[4].v;
+    if (typeof fullName === 'string' && fullName && (group === 'Лиза' || group === 'Лена')) {
+      const chats = num(c[6] && c[6].v);
+      const hours = num(c[9] && c[9].v);
+      const displayName = (c[3] && c[3].v) || fullName;
+      employees.push({
+        name: displayName,
+        group,
+        chats,
+        hours,
+        rate: (chats != null && hours) ? chats / hours : null
+      });
+    }
+  }
+
+  const summaryIdx = rows.findIndex(r => r.c[2] && r.c[2].v === 'Summary of teammates');
+  const blocks = [];
+  for (let i = summaryIdx + 1; i < rows.length; i++) {
+    const c = rows[i].c;
+    const label = c[4] && c[4].v;
+    if (label === 'Обычная папка' || label === 'Запас/догнать') continue;
+    const v6 = num(c[6] && c[6].v);
+    const v7 = num(c[7] && c[7].v);
+    if (v6 != null || v7 != null) blocks.push({ v6, v7 });
+  }
+
+  const deptChats = employees.reduce((s, e) => s + (e.chats || 0), 0);
+  const deptHours = employees.reduce((s, e) => s + (e.hours || 0), 0);
+  const dept = {
+    current: deptHours ? deptChats / deptHours : null,
+    target: 4,
+    diff: deptHours ? (deptChats / deptHours - 4) / 4 : null
+  };
+  const siren = { chats: blocks[3].v6, hours: blocks[3].v7, current: blocks[4].v7, target: blocks[5].v7, diff: blocks[6].v7 };
+  const g1 = { chats: blocks[7].v6, hours: blocks[7].v7, current: blocks[8].v7, target: blocks[9].v7, diff: blocks[10].v7 };
+  const g2 = { chats: blocks[11].v6, hours: blocks[11].v7, current: blocks[12].v7, target: blocks[13].v7, diff: blocks[14].v7 };
+
+  const lizaSum = employees.filter(e => e.group === 'Лиза').reduce((s, e) => s + (e.chats || 0), 0);
+  const lenaSum = employees.filter(e => e.group === 'Лена').reduce((s, e) => s + (e.chats || 0), 0);
+  const liza = Math.abs(g1.chats - lizaSum) < Math.abs(g2.chats - lizaSum) ? g1 : g2;
+  const lena = liza === g1 ? g2 : g1;
+
+  return { employees, dept, siren, liza, lena };
+}
+
+function card(label, value, target, diff) {
+  const ok = value != null && target != null && value >= target;
+  const pctW = value != null && target ? Math.min(100, (value / target) * 100) : 0;
+  const diffClass = diff != null && diff >= 0 ? 'ok' : 'bad';
+  return `
+    <div class="card">
+      <div class="label">${label}</div>
+      <div class="value ${ok ? 'ok' : 'bad'}">${fmt(value, 2)}</div>
+      <div class="sub">Цель: ${fmt(target, 0)}</div>
+      <div class="sub diff ${diffClass}">${diff != null ? (diff >= 0 ? '▲' : '▼') + ' ' + pct(diff) : '—'}</div>
+      <div class="bar"><div class="${ok ? 'ok' : 'bad'}" style="width:${pctW}%"></div></div>
+    </div>`;
+}
+
+function empCard(e) {
+  const ok = e.rate != null && e.rate >= 4;
+  const pctW = e.rate != null ? Math.min(100, (e.rate / 4) * 100) : 0;
+  return `
+    <div class="emp">
+      <div>
+        <div class="name">${e.name}</div>
+        <div class="meta">${fmt(e.chats, 0)} чатов · ${fmt(e.hours, 1)} ч</div>
+        <div class="mini-bar"><div class="${ok ? 'ok' : 'bad'}" style="width:${pctW}%"></div></div>
+      </div>
+      <div class="rate ${ok ? 'ok' : 'bad'}">${fmt(e.rate, 2)}</div>
+    </div>`;
+}
+
+function groupBlock(title, cls, group, rate) {
+  const ok = rate != null && rate >= 4;
+  const sorted = group.slice().sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+  return `
+    <div class="group ${cls}">
+      <div class="group-head">
+        <div class="group-title"><span class="dot"></span>${title}</div>
+        <div class="group-rate ${ok ? 'ok' : 'bad'}">${fmt(rate, 2)}</div>
+      </div>
+      ${sorted.map(empCard).join('')}
+    </div>`;
+}
+
+function render(data) {
+  const { employees, dept, siren, liza, lena } = data;
+
+  const cards = `
+    <div class="cards">
+      ${card('Отдел — чатов в час', dept.current, dept.target, dept.diff)}
+      ${card('Группа Лизы — чатов в час', liza.current, liza.target, liza.diff)}
+      ${card('Группа Лены — чатов в час', lena.current, lena.target, lena.diff)}
+      ${card('Обучение Сирена — чатов в час', siren.current, siren.target, siren.diff)}
+    </div>`;
+
+  const lenaEmp = employees.filter(e => e.group === 'Лена');
+  const lizaEmp = employees.filter(e => e.group === 'Лиза');
+
+  const groups = `
+    <div class="groups">
+      ${groupBlock('Группа Лены', 'lena', lenaEmp, lena.current)}
+      ${groupBlock('Группа Лизы', 'liza', lizaEmp, liza.current)}
+    </div>`;
+
+  document.getElementById('content').innerHTML = cards + groups;
+  document.getElementById('updated').textContent = 'Обновлено: ' + new Date().toLocaleString('ru-RU');
+}
+
+async function init() {
+  try {
+    const rows = await loadData();
+    const data = parse(rows);
+    render(data);
+  } catch (e) {
+    document.getElementById('content').innerHTML =
+      '<div class="error">Не удалось загрузить данные. Проверьте, что таблица открыта для доступа по ссылке.</div>';
+    document.getElementById('updated').textContent = 'Ошибка загрузки';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
