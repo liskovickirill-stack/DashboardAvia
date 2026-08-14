@@ -16,6 +16,7 @@
     --red: #f87171;
     --blue: #60a5fa;
     --violet: #a78bfa;
+    --amber: #fbbf24;
     --border: #2a3140;
     --shadow: 0 8px 24px rgba(0,0,0,0.35);
   }
@@ -69,6 +70,17 @@
   .bar > div { height: 100%; border-radius: 6px; }
   .bar .ok { background: linear-gradient(90deg, #10b981, #34d399); }
   .bar .bad { background: linear-gradient(90deg, #ef4444, #f87171); }
+  .quality {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .quality b { font-size: 16px; }
 
   .groups {
     display: grid;
@@ -89,26 +101,36 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    cursor: pointer;
+    user-select: none;
   }
-  .group-title { font-size: 18px; font-weight: 800; }
-  .group-title .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+  .group-title { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+  .group-title .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
   .group.lena .dot { background: var(--blue); }
   .group.liza .dot { background: var(--violet); }
+  .chevron { display: inline-block; transition: transform .2s; color: var(--muted); font-size: 14px; }
+  details:not([open]) > summary .chevron { transform: rotate(-90deg); }
   .group-rate { font-size: 15px; font-weight: 700; }
   .group-rate .ok { color: var(--green); }
   .group-rate .bad { color: var(--red); }
+  .group-quality { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
+  .emp-list { margin-top: 16px; }
   .emp {
+    background: var(--card2);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .emp:last-child { margin-bottom: 0; }
+  .emp-head {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 12px 14px;
-    border-radius: 12px;
-    background: var(--card2);
-    margin-bottom: 10px;
+    cursor: pointer;
+    user-select: none;
   }
-  .emp:last-child { margin-bottom: 0; }
   .emp .name { font-size: 14px; font-weight: 600; }
   .emp .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .emp .rate { font-size: 18px; font-weight: 800; }
@@ -120,6 +142,21 @@
   .emp .mini-bar > div { height: 100%; border-radius: 4px; }
   .emp .mini-bar .ok { background: var(--green); }
   .emp .mini-bar .bad { background: var(--red); }
+
+  .emp-detail {
+    padding: 4px 14px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .d-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .d-row + .d-row { border-top: 1px dashed var(--border); }
+  .d-row b { font-size: 14px; }
 
   .loading, .error {
     text-align: center;
@@ -150,7 +187,12 @@
 </div>
 
 <script>
-const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=557967994';
+const SHEET_MAIN = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=557967994';
+const SHEET_ZHALOBY = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=1159078706';
+const SHEET_LOG = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=328224535';
+
+const RATE_TARGET = 4;
+const QUALITY_TARGET = 0.85;
 
 function num(v) {
   return (typeof v === 'number') ? v : null;
@@ -163,18 +205,22 @@ function fmt(n, digits) {
 
 function pct(n) {
   if (n == null) return '—';
-  return (n * 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+  return (n * 100).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + '%';
 }
 
-async function loadData() {
-  const resp = await fetch(SHEET_URL);
+function norm(s) {
+  return String(s).toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
+}
+
+async function fetchRows(url) {
+  const resp = await fetch(url);
   const text = await resp.text();
   const jsonStr = text.substring(text.indexOf('(') + 1, text.lastIndexOf(')'));
   const data = JSON.parse(jsonStr);
   return data.table.rows;
 }
 
-function parse(rows) {
+function parseMain(rows) {
   const employees = [];
   for (const r of rows) {
     const c = r.c;
@@ -209,8 +255,8 @@ function parse(rows) {
   const deptHours = employees.reduce((s, e) => s + (e.hours || 0), 0);
   const dept = {
     current: deptHours ? deptChats / deptHours : null,
-    target: 4,
-    diff: deptHours ? (deptChats / deptHours - 4) / 4 : null
+    target: RATE_TARGET,
+    diff: deptHours ? (deptChats / deptHours - RATE_TARGET) / RATE_TARGET : null
   };
   const siren = { chats: blocks[3].v6, hours: blocks[3].v7, current: blocks[4].v7, target: blocks[5].v7, diff: blocks[6].v7 };
   const g1 = { chats: blocks[7].v6, hours: blocks[7].v7, current: blocks[8].v7, target: blocks[9].v7, diff: blocks[10].v7 };
@@ -224,10 +270,91 @@ function parse(rows) {
   return { employees, dept, siren, liza, lena };
 }
 
-function card(label, value, target, diff) {
+function nameKeyFromFull(full) {
+  const parts = String(full).trim().split(/\s+/);
+  const name = parts[1] || parts[0] || '';
+  const patr = parts[2];
+  if (patr) return norm(name + ' ' + patr[0]);
+  return norm(name);
+}
+
+function parseLog(rows) {
+  const byFull = {};
+  const byName = {};
+  for (const r of rows) {
+    const c = r.c;
+    const fullName = c[26] && c[26].v;
+    const score = num(c[9] && c[9].v);
+    if (typeof fullName === 'string' && fullName.trim() && score != null) {
+      const parts = fullName.trim().split(/\s+/);
+      const name = parts[1] || parts[0];
+      const fullKey = nameKeyFromFull(fullName);
+      const nameKey = norm(name);
+      (byFull[fullKey] = byFull[fullKey] || []).push(score);
+      (byName[nameKey] = byName[nameKey] || []).push(score);
+    }
+  }
+  return { byFull, byName };
+}
+
+function getQuality(emp, log) {
+  const fullKey = norm(emp.name);
+  const nameKey = norm(emp.name.split(/\s+/)[0]);
+  const arr = log.byFull[fullKey] || log.byName[nameKey];
+  if (!arr || !arr.length) return null;
+  return arr.reduce((s, x) => s + x, 0) / arr.length;
+}
+
+function parseZhaloby(rows) {
+  const zhaloby = {};
+  const zalety = {};
+  const zhaloby3 = {};
+  const zalety3 = {};
+  for (const r of rows) {
+    const c = r.c;
+    const zName = c[0] && c[0].v;
+    if (typeof zName === 'string' && zName.trim()) {
+      const count = num(c[1] && c[1].v) || 0;
+      const sum = num(c[2] && c[2].v) || 0;
+      const key = norm(zName);
+      const k3 = key.slice(0, 3);
+      if (!zalety[key]) zalety[key] = { count: 0, sum: 0 };
+      zalety[key].count += count; zalety[key].sum += sum;
+      if (!zalety3[k3]) zalety3[k3] = { count: 0, sum: 0 };
+      zalety3[k3].count += count; zalety3[k3].sum += sum;
+    }
+    const zhName = c[6] && c[6].v;
+    if (typeof zhName === 'string' && zhName.trim()) {
+      const count = num(c[7] && c[7].v) || 0;
+      const key = norm(zhName);
+      const k3 = key.slice(0, 3);
+      zhaloby[key] = (zhaloby[key] || 0) + count;
+      zhaloby3[k3] = (zhaloby3[k3] || 0) + count;
+    }
+  }
+  return { zhaloby, zalety, zhaloby3, zalety3 };
+}
+
+function getZhalobyZalety(emp, z) {
+  const fullKey = norm(emp.name);
+  const nameKey = norm(emp.name.split(/\s+/)[0]);
+  const k3 = nameKey.slice(0, 3);
+  const zh = z.zhaloby[fullKey] ?? z.zhaloby[nameKey] ?? z.zhaloby3[k3] ?? 0;
+  const zl = z.zalety[fullKey] ?? z.zalety[nameKey] ?? z.zalety3[k3] ?? { count: 0, sum: 0 };
+  return { zhaloby: zh, zalety: zl };
+}
+
+function avgQuality(emps) {
+  const qs = emps.map(e => e.quality).filter(q => q != null);
+  if (!qs.length) return null;
+  return qs.reduce((s, q) => s + q, 0) / qs.length;
+}
+
+function card(label, value, target, diff, quality) {
   const ok = value != null && target != null && value >= target;
   const pctW = value != null && target ? Math.min(100, (value / target) * 100) : 0;
   const diffClass = diff != null && diff >= 0 ? 'ok' : 'bad';
+  const qOk = quality != null && quality >= QUALITY_TARGET;
   return `
     <div class="card">
       <div class="label">${label}</div>
@@ -235,33 +362,54 @@ function card(label, value, target, diff) {
       <div class="sub">Цель: ${fmt(target, 0)}</div>
       <div class="sub diff ${diffClass}">${diff != null ? (diff >= 0 ? '▲' : '▼') + ' ' + pct(diff) : '—'}</div>
       <div class="bar"><div class="${ok ? 'ok' : 'bad'}" style="width:${pctW}%"></div></div>
+      <div class="quality"><span>Качество</span><b class="${qOk ? 'ok' : 'bad'}">${pct(quality)}</b></div>
     </div>`;
 }
 
 function empCard(e) {
-  const ok = e.rate != null && e.rate >= 4;
-  const pctW = e.rate != null ? Math.min(100, (e.rate / 4) * 100) : 0;
+  const ok = e.rate != null && e.rate >= RATE_TARGET;
+  const pctW = e.rate != null ? Math.min(100, (e.rate / RATE_TARGET) * 100) : 0;
+  const qOk = e.quality != null && e.quality >= QUALITY_TARGET;
+  const zhOk = e.zhaloby == null || e.zhaloby <= 0;
+  const zlOk = e.zalety == null || e.zalety.count <= 0;
+  const zlCount = e.zalety ? e.zalety.count : 0;
+  const zlSum = e.zalety ? e.zalety.sum : 0;
   return `
-    <div class="emp">
-      <div>
-        <div class="name">${e.name}</div>
-        <div class="meta">${fmt(e.chats, 0)} чатов · ${fmt(e.hours, 1)} ч</div>
-        <div class="mini-bar"><div class="${ok ? 'ok' : 'bad'}" style="width:${pctW}%"></div></div>
+    <details class="emp">
+      <summary class="emp-head">
+        <div>
+          <div class="name"><span class="chevron">▸</span> ${e.name}</div>
+          <div class="meta">${fmt(e.chats, 0)} чатов · ${fmt(e.hours, 1)} ч</div>
+          <div class="mini-bar"><div class="${ok ? 'ok' : 'bad'}" style="width:${pctW}%"></div></div>
+        </div>
+        <div class="rate ${ok ? 'ok' : 'bad'}">${fmt(e.rate, 2)}</div>
+      </summary>
+      <div class="emp-detail">
+        <div class="d-row"><span>Эффективность</span><b class="${ok ? 'ok' : 'bad'}">${fmt(e.rate, 2)} / ${RATE_TARGET}</b></div>
+        <div class="d-row"><span>Качество</span><b class="${qOk ? 'ok' : 'bad'}">${pct(e.quality)} / 85%</b></div>
+        <div class="d-row"><span>Жалобы</span><b class="${zhOk ? 'ok' : 'bad'}">${e.zhaloby ?? 0}</b></div>
+        <div class="d-row"><span>Залёты</span><b class="${zlOk ? 'ok' : 'bad'}">${zlCount} · ${fmt(zlSum, 0)} ₽</b></div>
       </div>
-      <div class="rate ${ok ? 'ok' : 'bad'}">${fmt(e.rate, 2)}</div>
-    </div>`;
+    </details>`;
 }
 
-function groupBlock(title, cls, group, rate) {
-  const ok = rate != null && rate >= 4;
+function groupBlock(title, cls, group, rate, quality) {
+  const ok = rate != null && rate >= RATE_TARGET;
   const sorted = group.slice().sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
   return `
     <div class="group ${cls}">
-      <div class="group-head">
-        <div class="group-title"><span class="dot"></span>${title}</div>
-        <div class="group-rate ${ok ? 'ok' : 'bad'}">${fmt(rate, 2)}</div>
-      </div>
-      ${sorted.map(empCard).join('')}
+      <details class="group-details" open>
+        <summary class="group-head">
+          <div class="group-title"><span class="chevron">▸</span><span class="dot"></span>${title}</div>
+          <div>
+            <div class="group-rate ${ok ? 'ok' : 'bad'}">${fmt(rate, 2)}</div>
+            <div class="group-quality">Качество: <span class="${quality != null && quality >= QUALITY_TARGET ? 'ok' : 'bad'}">${pct(quality)}</span></div>
+          </div>
+        </summary>
+        <div class="emp-list">
+          ${sorted.map(empCard).join('')}
+        </div>
+      </details>
     </div>`;
 }
 
@@ -270,10 +418,10 @@ function render(data) {
 
   const cards = `
     <div class="cards">
-      ${card('Отдел — чатов в час', dept.current, dept.target, dept.diff)}
-      ${card('Группа Лизы — чатов в час', liza.current, liza.target, liza.diff)}
-      ${card('Группа Лены — чатов в час', lena.current, lena.target, lena.diff)}
-      ${card('Обучение Сирена — чатов в час', siren.current, siren.target, siren.diff)}
+      ${card('Отдел — чатов в час', dept.current, dept.target, dept.diff, dept.quality)}
+      ${card('Группа Лизы — чатов в час', liza.current, liza.target, liza.diff, liza.quality)}
+      ${card('Группа Лены — чатов в час', lena.current, lena.target, lena.diff, lena.quality)}
+      ${card('Обучение Сирена — чатов в час', siren.current, siren.target, siren.diff, siren.quality)}
     </div>`;
 
   const lenaEmp = employees.filter(e => e.group === 'Лена');
@@ -281,8 +429,8 @@ function render(data) {
 
   const groups = `
     <div class="groups">
-      ${groupBlock('Группа Лены', 'lena', lenaEmp, lena.current)}
-      ${groupBlock('Группа Лизы', 'liza', lizaEmp, liza.current)}
+      ${groupBlock('Группа Лены', 'lena', lenaEmp, lena.current, lena.quality)}
+      ${groupBlock('Группа Лизы', 'liza', lizaEmp, liza.current, liza.quality)}
     </div>`;
 
   document.getElementById('content').innerHTML = cards + groups;
@@ -291,8 +439,24 @@ function render(data) {
 
 async function init() {
   try {
-    const rows = await loadData();
-    const data = parse(rows);
+    const [mainRows, logRows, zhRows] = await Promise.all([
+      fetchRows(SHEET_MAIN),
+      fetchRows(SHEET_LOG),
+      fetchRows(SHEET_ZHALOBY)
+    ]);
+    const data = parseMain(mainRows);
+    const log = parseLog(logRows);
+    const z = parseZhaloby(zhRows);
+    for (const e of data.employees) {
+      e.quality = getQuality(e, log);
+      const zz = getZhalobyZalety(e, z);
+      e.zhaloby = zz.zhaloby;
+      e.zalety = zz.zalety;
+    }
+    data.dept.quality = avgQuality(data.employees);
+    data.lena.quality = avgQuality(data.employees.filter(e => e.group === 'Лена'));
+    data.liza.quality = avgQuality(data.employees.filter(e => e.group === 'Лиза'));
+    data.siren.quality = data.dept.quality;
     render(data);
   } catch (e) {
     document.getElementById('content').innerHTML =
