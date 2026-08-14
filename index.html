@@ -193,6 +193,9 @@ const SHEET_LOG = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRa
 
 const RATE_TARGET = 4;
 const QUALITY_TARGET = 0.85;
+const EMP_TARGETS = {
+  'Юлия': 3, 'Ксения': 3, 'Николай': 3, 'Арина': 3, 'Александр': 3, 'Вероника': 3, 'Валерий': 3
+};
 
 function num(v) {
   return (typeof v === 'number') ? v : null;
@@ -206,6 +209,11 @@ function fmt(n, digits) {
 function pct(n) {
   if (n == null) return '—';
   return (n * 100).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + '%';
+}
+
+function pctQ(n) {
+  if (n == null) return '—';
+  return (n * 100).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
 }
 
 function norm(s) {
@@ -235,6 +243,7 @@ function parseMain(rows) {
         group,
         chats,
         hours,
+        target: EMP_TARGETS[displayName] || RATE_TARGET,
         rate: (chats != null && hours) ? chats / hours : null
       });
     }
@@ -362,13 +371,14 @@ function card(label, value, target, diff, quality) {
       <div class="sub">Цель: ${fmt(target, 0)}</div>
       <div class="sub diff ${diffClass}">${diff != null ? (diff >= 0 ? '▲' : '▼') + ' ' + pct(diff) : '—'}</div>
       <div class="bar"><div class="${ok ? 'ok' : 'bad'}" style="width:${pctW}%"></div></div>
-      <div class="quality"><span>Качество</span><b class="${qOk ? 'ok' : 'bad'}">${pct(quality)}</b></div>
+      <div class="quality"><span>Качество</span><b class="${qOk ? 'ok' : 'bad'}">${pctQ(quality)}</b></div>
     </div>`;
 }
 
 function empCard(e) {
-  const ok = e.rate != null && e.rate >= RATE_TARGET;
-  const pctW = e.rate != null ? Math.min(100, (e.rate / RATE_TARGET) * 100) : 0;
+  const t = e.target || RATE_TARGET;
+  const ok = e.rate != null && e.rate >= t;
+  const pctW = e.rate != null ? Math.min(100, (e.rate / t) * 100) : 0;
   const qOk = e.quality != null && e.quality >= QUALITY_TARGET;
   const zhOk = e.zhaloby == null || e.zhaloby <= 0;
   const zlOk = e.zalety == null || e.zalety.count <= 0;
@@ -385,8 +395,8 @@ function empCard(e) {
         <div class="rate ${ok ? 'ok' : 'bad'}">${fmt(e.rate, 2)}</div>
       </summary>
       <div class="emp-detail">
-        <div class="d-row"><span>Эффективность</span><b class="${ok ? 'ok' : 'bad'}">${fmt(e.rate, 2)} / ${RATE_TARGET}</b></div>
-        <div class="d-row"><span>Качество</span><b class="${qOk ? 'ok' : 'bad'}">${pct(e.quality)} / 85%</b></div>
+        <div class="d-row"><span>Эффективность</span><b class="${ok ? 'ok' : 'bad'}">${fmt(e.rate, 2)} / ${t}</b></div>
+        <div class="d-row"><span>Качество</span><b class="${qOk ? 'ok' : 'bad'}">${pctQ(e.quality)} / 85%</b></div>
         <div class="d-row"><span>Жалобы</span><b class="${zhOk ? 'ok' : 'bad'}">${e.zhaloby ?? 0}</b></div>
         <div class="d-row"><span>Залёты</span><b class="${zlOk ? 'ok' : 'bad'}">${zlCount} · ${fmt(zlSum, 0)} ₽</b></div>
       </div>
@@ -403,7 +413,7 @@ function groupBlock(title, cls, group, rate, quality) {
           <div class="group-title"><span class="chevron">▸</span><span class="dot"></span>${title}</div>
           <div>
             <div class="group-rate ${ok ? 'ok' : 'bad'}">${fmt(rate, 2)}</div>
-            <div class="group-quality">Качество: <span class="${quality != null && quality >= QUALITY_TARGET ? 'ok' : 'bad'}">${pct(quality)}</span></div>
+            <div class="group-quality">Качество: <span class="${quality != null && quality >= QUALITY_TARGET ? 'ok' : 'bad'}">${pctQ(quality)}</span></div>
           </div>
         </summary>
         <div class="emp-list">
