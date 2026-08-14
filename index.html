@@ -167,6 +167,45 @@
   .error { color: var(--red); }
   .note { font-size: 12px; color: var(--muted); margin-top: 24px; text-align: center; }
 
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .tab-btn {
+    background: var(--card2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 10px 18px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all .15s;
+  }
+  .tab-btn:hover { color: var(--text); border-color: #3a4356; }
+  .tab-btn.active { background: var(--blue); color: #0b1220; border-color: var(--blue); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+  }
+  .chart-card h3 { font-size: 16px; margin-bottom: 16px; }
+  .chart-wrap { position: relative; height: 340px; }
+
+  .period-controls { display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+  .period-controls label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .period-controls input[type=date] {
+    background: var(--card2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 13px;
+  }
+
   @media (max-width: 800px) {
     .groups { grid-template-columns: 1fr; }
   }
@@ -179,17 +218,44 @@
     <div class="updated" id="updated">Загрузка данных…</div>
   </header>
 
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="overview" onclick="showTab('overview')">📊 Обзор</button>
+    <button class="tab-btn" data-tab="charts" onclick="showTab('charts')">📈 Графики</button>
+  </div>
+
   <div id="content">
-    <div class="loading">Загружаю данные из таблицы…</div>
+    <div id="tab-overview" class="tab-panel active">
+      <div class="loading">Загружаю данные из таблицы…</div>
+    </div>
+    <div id="tab-charts" class="tab-panel">
+      <div class="chart-card">
+        <h3>Эффективность по дням</h3>
+        <div class="period-controls">
+          <label>От <input type="date" id="eff-from"></label>
+          <label>До <input type="date" id="eff-to"></label>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-eff"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Качество по дням</h3>
+        <div class="period-controls">
+          <label>От <input type="date" id="q-from"></label>
+          <label>До <input type="date" id="q-to"></label>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-quality"></canvas></div>
+      </div>
+    </div>
   </div>
 
   <div class="note">Данные обновляются автоматически из Google-таблицы при каждом открытии страницы.</div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 const SHEET_MAIN = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=557967994';
 const SHEET_ZHALOBY = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=1159078706';
 const SHEET_LOG = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=328224535';
+const SHEET_REPORT = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&sheet=%D0%BE%D1%82%D1%87%D0%B5%D1%82%2008.26';
 
 const RATE_TARGET = 4;
 const QUALITY_TARGET = 0.85;
@@ -290,6 +356,7 @@ function nameKeyFromFull(full) {
 function parseLog(rows) {
   const byFull = {};
   const byName = {};
+  const daily = [];
   for (const r of rows) {
     const c = r.c;
     const fullName = c[26] && c[26].v;
@@ -301,9 +368,13 @@ function parseLog(rows) {
       const nameKey = norm(name);
       (byFull[fullKey] = byFull[fullKey] || []).push(score);
       (byName[nameKey] = byName[nameKey] || []).push(score);
+      const dateCell = c[4] && c[4].f;
+      if (dateCell && /^\d{2}\.\d{2}\.\d{4}$/.test(dateCell)) {
+        daily.push({ day: dateCell.slice(0, 5), name, score });
+      }
     }
   }
-  return { byFull, byName };
+  return { byFull, byName, daily };
 }
 
 function getQuality(emp, log) {
@@ -443,8 +514,144 @@ function render(data) {
       ${groupBlock('Группа Лизы', 'liza', lizaEmp, liza.current, liza.quality)}
     </div>`;
 
-  document.getElementById('content').innerHTML = cards + groups;
+  document.getElementById('tab-overview').innerHTML = cards + groups;
   document.getElementById('updated').textContent = 'Обновлено: ' + new Date().toLocaleString('ru-RU');
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+  if (name === 'charts' && !window._chartsRendered) {
+    window._chartsRendered = true;
+    renderCharts(window._report);
+  }
+}
+
+function parseReport(rows) {
+  const days = [];
+  const byEmp = {};
+  const header = rows[0].c;
+  for (let i = 13; i < header.length; i++) {
+    const d = header[i] && header[i].f;
+    if (d && /^\d{2}\.\d{2}$/.test(d)) days.push({ idx: i, label: d });
+  }
+  for (const r of rows) {
+    const c = r.c;
+    const name = c[3] && c[3].v;
+    const group = c[4] && c[4].v;
+    if (typeof name === 'string' && name && (group === 'Лиза' || group === 'Лена')) {
+      const vals = days.map(d => num(c[d.idx] && c[d.idx].v) || 0);
+      byEmp[name] = { name, group, vals };
+    }
+  }
+  return { days, byEmp };
+}
+
+function valToLabel(v) {
+  if (!v) return null;
+  const p = v.split('-');
+  return p[2] + '.' + p[1];
+}
+
+function destroyCharts() {
+  if (window._charts) Object.values(window._charts).forEach(c => { if (c) c.destroy(); });
+  window._charts = {};
+}
+
+function renderCharts(report) {
+  if (typeof Chart === 'undefined') return;
+  destroyCharts();
+  const { days, byEmp } = report;
+  const labels = days.map(d => d.label);
+  const emps = Object.values(byEmp);
+  const lena = emps.filter(e => e.group === 'Лена');
+  const liza = emps.filter(e => e.group === 'Лиза');
+  const sum = (arr) => arr.map((_, i) => arr.reduce((s, e) => s + (e.vals[i] || 0), 0));
+  const dept = sum(emps);
+  const lenaSum = sum(lena);
+  const lizaSum = sum(liza);
+
+  // Качество по дням из лога анкет
+  const daily = (window._log && window._log.daily) || [];
+  const groupByFirst = {};
+  for (const e of emps) {
+    const fw = String(e.name).split(/\s+/)[0];
+    if (fw) groupByFirst[fw] = e.group;
+  }
+  const qByDay = { dept: {}, lena: {}, liza: {} };
+  for (const d of daily) {
+    const g = groupByFirst[d.name] || 'dept';
+    const bucket = g === 'Лена' ? 'lena' : g === 'Лиза' ? 'liza' : 'dept';
+    (qByDay.dept[d.day] = qByDay.dept[d.day] || []).push(d.score);
+    if (bucket !== 'dept') (qByDay[bucket][d.day] = qByDay[bucket][d.day] || []).push(d.score);
+  }
+  const avgArr = (arr) => arr && arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length * 100 : null;
+  const qDept = labels.map(l => avgArr(qByDay.dept[l]));
+  const qLena = labels.map(l => avgArr(qByDay.lena[l]));
+  const qLiza = labels.map(l => avgArr(qByDay.liza[l]));
+
+  const effFrom = valToLabel(document.getElementById('eff-from').value);
+  const effTo = valToLabel(document.getElementById('eff-to').value);
+  const qFrom = valToLabel(document.getElementById('q-from').value);
+  const qTo = valToLabel(document.getElementById('q-to').value);
+
+  const filter = (ls, arr, from, to) => {
+    const out = { labels: [], data: [] };
+    for (let i = 0; i < ls.length; i++) {
+      if (from && ls[i] < from) continue;
+      if (to && ls[i] > to) continue;
+      out.labels.push(ls[i]);
+      out.data.push(arr[i]);
+    }
+    return out;
+  };
+
+  const eff = filter(labels, dept, effFrom, effTo);
+  const effLena = filter(labels, lenaSum, effFrom, effTo);
+  const effLiza = filter(labels, lizaSum, effFrom, effTo);
+  const q = filter(labels, qDept, qFrom, qTo);
+  const qLenaF = filter(labels, qLena, qFrom, qTo);
+  const qLizaF = filter(labels, qLiza, qFrom, qTo);
+
+  window._charts['eff'] = new Chart(document.getElementById('chart-eff'), {
+    type: 'line',
+    data: {
+      labels: eff.labels,
+      datasets: [
+        { label: 'Отдел', data: eff.data, borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.1)', fill: true, tension: 0.3, pointRadius: 2 },
+        { label: 'Группа Лены', data: effLena.data, borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.1)', fill: true, tension: 0.3, pointRadius: 2 },
+        { label: 'Группа Лизы', data: effLiza.data, borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.1)', fill: true, tension: 0.3, pointRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#e8ecf4' } } },
+      scales: {
+        x: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3140' } },
+        y: { beginAtZero: true, ticks: { color: '#8b93a7' }, grid: { color: '#2a3140' } }
+      }
+    }
+  });
+
+  window._charts['quality'] = new Chart(document.getElementById('chart-quality'), {
+    type: 'line',
+    data: {
+      labels: q.labels,
+      datasets: [
+        { label: 'Отдел', data: q.data, borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.1)', fill: true, tension: 0.3, pointRadius: 2 },
+        { label: 'Группа Лены', data: qLenaF.data, borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.1)', fill: true, tension: 0.3, pointRadius: 2 },
+        { label: 'Группа Лизы', data: qLizaF.data, borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.1)', fill: true, tension: 0.3, pointRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#e8ecf4' } } },
+      scales: {
+        x: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3140' } },
+        y: { min: 0, max: 100, ticks: { color: '#8b93a7', callback: v => v + '%' }, grid: { color: '#2a3140' } }
+      }
+    }
+  });
 }
 
 async function init() {
@@ -468,8 +675,19 @@ async function init() {
     data.liza.quality = avgQuality(data.employees.filter(e => e.group === 'Лиза'));
     data.siren.quality = data.dept.quality;
     render(data);
+    const report = parseReport(await fetchRows(SHEET_REPORT));
+    const qByName = {};
+    for (const e of data.employees) qByName[e.name] = e.quality;
+    for (const re of Object.values(report.byEmp)) re.quality = qByName[re.name] ?? null;
+    window._report = report;
+    window._log = log;
+    ['eff-from', 'eff-to', 'q-from', 'q-to'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => {
+        if (window._chartsRendered) renderCharts(window._report);
+      });
+    });
   } catch (e) {
-    document.getElementById('content').innerHTML =
+    document.getElementById('tab-overview').innerHTML =
       '<div class="error">Не удалось загрузить данные. Проверьте, что таблица открыта для доступа по ссылке.</div>';
     document.getElementById('updated').textContent = 'Ошибка загрузки';
   }
