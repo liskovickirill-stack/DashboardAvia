@@ -205,6 +205,14 @@
     background: var(--card2); color: var(--text); border: 1px solid var(--border);
     border-radius: 8px; padding: 6px 10px; font-size: 13px;
   }
+  .header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .month-controls { display: flex; align-items: center; gap: 8px; }
+  .month-controls .m-label { font-size: 13px; color: var(--muted); }
+  #month-select {
+    background: var(--card2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+  }
+  #month-select:hover { border-color: #3a4356; }
 
   @media (max-width: 800px) {
     .groups { grid-template-columns: 1fr; }
@@ -215,7 +223,13 @@
 <div class="container">
   <header>
     <h1>📊 Дашборд <span class="accent">эффективности</span></h1>
-    <div class="updated" id="updated">Загрузка данных…</div>
+    <div class="header-right">
+      <div class="month-controls">
+        <span class="m-label">Месяц:</span>
+        <select id="month-select"></select>
+      </div>
+      <div class="updated" id="updated">Загрузка данных…</div>
+    </div>
   </header>
 
   <div class="tabs">
@@ -255,7 +269,31 @@
 const SHEET_MAIN = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=557967994';
 const SHEET_ZHALOBY = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=1159078706';
 const SHEET_LOG = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&gid=328224535';
-const SHEET_REPORT = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&sheet=%D0%BE%D1%82%D1%87%D0%B5%D1%82%2008.26';
+const SHEET_BASE = 'https://docs.google.com/spreadsheets/d/1z9hISAx0GcUIxalb_ULRavkvlwphtSCtKosu93RYUJY/gviz/tq?tqx=out:json&sheet=';
+function monthKey(d) {
+  return String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getFullYear()).slice(2);
+}
+function reportUrlFor(key) {
+  return SHEET_BASE + encodeURIComponent('отчет ' + key);
+}
+function logUrlFor(key) {
+  return SHEET_BASE + encodeURIComponent('Лог анкет ' + key);
+}
+function zhalobyUrlFor(key) {
+  return SHEET_BASE + encodeURIComponent('жалобы и залеты ' + key);
+}
+function populateMonths(select) {
+  const now = new Date();
+  const opts = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = monthKey(d);
+    const label = d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    opts.push({ key, label });
+  }
+  select.innerHTML = opts.map(o => `<option value="${o.key}">${o.label}</option>`).join('');
+  select.value = monthKey(now);
+}
 
 const RATE_TARGET = 4;
 const QUALITY_TARGET = 0.85;
@@ -378,9 +416,13 @@ function parseLog(rows) {
 }
 
 function getQuality(emp, log) {
-  const fullKey = norm(emp.name);
-  const nameKey = norm(emp.name.split(/\s+/)[0]);
-  const arr = log.byFull[fullKey] || log.byName[nameKey];
+  const parts = String(emp.name).trim().split(/\s+/);
+  let arr = null;
+  for (const p of parts) {
+    const k = norm(p);
+    if (log.byName[k] && log.byName[k].length) { arr = log.byName[k]; break; }
+  }
+  if (!arr) arr = log.byFull[norm(emp.name)];
   if (!arr || !arr.length) return null;
   return arr.reduce((s, x) => s + x, 0) / arr.length;
 }
@@ -416,11 +458,10 @@ function parseZhaloby(rows) {
 }
 
 function getZhalobyZalety(emp, z) {
-  const fullKey = norm(emp.name);
   const nameKey = norm(emp.name.split(/\s+/)[0]);
   const k3 = nameKey.slice(0, 3);
-  const zh = z.zhaloby[fullKey] ?? z.zhaloby[nameKey] ?? z.zhaloby3[k3] ?? 0;
-  const zl = z.zalety[fullKey] ?? z.zalety[nameKey] ?? z.zalety3[k3] ?? { count: 0, sum: 0 };
+  const zh = z.zhaloby[nameKey] ?? z.zhaloby3[k3] ?? 0;
+  const zl = z.zalety[nameKey] ?? z.zalety3[k3] ?? { count: 0, sum: 0 };
   return { zhaloby: zh, zalety: zl };
 }
 
@@ -528,23 +569,84 @@ function showTab(name) {
 }
 
 function parseReport(rows) {
-  const days = [];
-  const byEmp = {};
   const header = rows[0].c;
-  for (let i = 13; i < header.length; i++) {
+  const days = [];
+  for (let i = 0; i < header.length; i++) {
     const d = header[i] && header[i].f;
     if (d && /^\d{2}\.\d{2}$/.test(d)) days.push({ idx: i, label: d });
   }
+  const byEmp = {};
   for (const r of rows) {
     const c = r.c;
-    const name = c[3] && c[3].v;
-    const group = c[4] && c[4].v;
-    if (typeof name === 'string' && name && (group === 'Лиза' || group === 'Лена')) {
-      const vals = days.map(d => num(c[d.idx] && c[d.idx].v) || 0);
-      byEmp[name] = { name, group, vals };
+    const fullName = c[0] && c[0].v;
+    if (typeof fullName !== 'string' || !fullName) continue;
+    if (c[2] && c[2].v === 'Summary of teammates') continue;
+    let group = c[4] && c[4].v;
+    let displayName = c[3] && c[3].v;
+    let chats, hours, rate;
+    if (group === 'Лиза' || group === 'Лена') {
+      // формат 08.26: группа в c[4], имя в c[3]
+      chats = num(c[6] && c[6].v);
+      hours = num(c[9] && c[9].v);
+      rate = num(c[12] && c[12].v);
+    } else {
+      // формат 06.26/07.26: руководитель в c[3], имя в c[1]
+      const rg = c[3] && c[3].v;
+      group = rg === 'Сивакина Елена' ? 'Лена' : rg === 'Елизавета Белова' ? 'Лиза' : null;
+      displayName = c[1] && c[1].v;
+      chats = num(c[5] && c[5].v);
+      hours = num(c[8] && c[8].v);
+      rate = num(c[11] && c[11].v);
+    }
+    if (!group) continue;
+    const vals = days.map(d => num(c[d.idx] && c[d.idx].v) || 0);
+    byEmp[displayName] = { name: displayName, group, chats, hours, rate, vals };
+  }
+  const emps = Object.values(byEmp);
+  const mk = (arr) => {
+    const chats = arr.reduce((s, e) => s + (e.chats || 0), 0);
+    const hours = arr.reduce((s, e) => s + (e.hours || 0), 0);
+    const current = hours ? chats / hours : null;
+    const target = RATE_TARGET;
+    const diff = current != null ? (current - target) / target : null;
+    return { chats, hours, current, target, diff };
+  };
+  const dept = mk(emps);
+  const lena = mk(emps.filter(e => e.group === 'Лена'));
+  const liza = mk(emps.filter(e => e.group === 'Лиза'));
+  const siren = extractSiren(rows);
+  return { days, byEmp, dept, lena, liza, siren };
+}
+
+function extractSiren(rows) {
+  const summaryIdx = rows.findIndex(r => r.c[2] && r.c[2].v === 'Summary of teammates');
+  if (summaryIdx < 0) return { current: null, target: 3, diff: null };
+  for (let i = summaryIdx + 1; i < rows.length; i++) {
+    const c = rows[i].c;
+    // цель 3 в c[7] (формат 08.26) или c[6] (формат 07.26)
+    const t7 = num(c[7] && c[7].v);
+    const t6 = num(c[6] && c[6].v);
+    if (t7 === 3) {
+      // формат 08.26: текущее в c[7] предыдущей строки, чаты/часы в строке перед ней
+      const curRow = rows[i - 1] && rows[i - 1].c;
+      const dataRow = rows[i - 2] && rows[i - 2].c;
+      const current = num(curRow && curRow[7] && curRow[7].v);
+      const diff = num(c[8] && c[8].v);
+      const chats = num(dataRow && dataRow[6] && dataRow[6].v);
+      const hours = num(dataRow && dataRow[7] && dataRow[7].v);
+      return { chats, hours, current, target: 3, diff };
+    } else if (t6 === 3) {
+      // формат 07.26: текущее в c[6] предыдущей строки
+      const curRow = rows[i - 1] && rows[i - 1].c;
+      const dataRow = rows[i - 2] && rows[i - 2].c;
+      const current = num(curRow && curRow[6] && curRow[6].v);
+      const diff = num(c[7] && c[7].v);
+      const chats = num(dataRow && dataRow[5] && dataRow[5].v);
+      const hours = num(dataRow && dataRow[6] && dataRow[6].v);
+      return { chats, hours, current, target: 3, diff };
     }
   }
-  return { days, byEmp };
+  return { current: null, target: 3, diff: null };
 }
 
 function valToLabel(v) {
@@ -654,38 +756,57 @@ function renderCharts(report) {
   });
 }
 
+function buildData(report, log, z) {
+  const employees = Object.values(report.byEmp).map(e => {
+    const emp = { ...e, target: EMP_TARGETS[e.name] || RATE_TARGET };
+    emp.quality = getQuality(emp, log);
+    const zz = getZhalobyZalety(emp, z);
+    emp.zhaloby = zz.zhaloby;
+    emp.zalety = zz.zalety;
+    return emp;
+  });
+  const dept = { ...report.dept, quality: avgQuality(employees) };
+  const lena = { ...report.lena, quality: avgQuality(employees.filter(e => e.group === 'Лена')) };
+  const liza = { ...report.liza, quality: avgQuality(employees.filter(e => e.group === 'Лиза')) };
+  const siren = { ...report.siren, quality: dept.quality };
+  return { employees, dept, lena, liza, siren };
+}
+
+async function loadMonth(key) {
+  let report, log, z;
+  try {
+    const [rr, lr, zr] = await Promise.all([
+      fetchRows(reportUrlFor(key)),
+      fetchRows(logUrlFor(key)),
+      fetchRows(zhalobyUrlFor(key))
+    ]);
+    report = parseReport(rr);
+    log = parseLog(lr);
+    z = parseZhaloby(zr);
+  } catch (e) {
+    report = { days: [], byEmp: {}, dept: { current: null, target: RATE_TARGET, diff: null }, lena: { current: null, target: RATE_TARGET, diff: null }, liza: { current: null, target: RATE_TARGET, diff: null }, siren: { current: null, target: 3, diff: null } };
+    log = { byFull: {}, byName: {}, daily: [] };
+    z = { zhaloby: {}, zalety: {}, zhaloby3: {}, zalety3: {} };
+  }
+  const data = buildData(report, log, z);
+  window._report = report;
+  window._log = log;
+  window._data = data;
+  render(data);
+  if (window._chartsRendered) renderCharts(report);
+}
+
 async function init() {
   try {
-    const [mainRows, logRows, zhRows] = await Promise.all([
-      fetchRows(SHEET_MAIN),
-      fetchRows(SHEET_LOG),
-      fetchRows(SHEET_ZHALOBY)
-    ]);
-    const data = parseMain(mainRows);
-    const log = parseLog(logRows);
-    const z = parseZhaloby(zhRows);
-    for (const e of data.employees) {
-      e.quality = getQuality(e, log);
-      const zz = getZhalobyZalety(e, z);
-      e.zhaloby = zz.zhaloby;
-      e.zalety = zz.zalety;
-    }
-    data.dept.quality = avgQuality(data.employees);
-    data.lena.quality = avgQuality(data.employees.filter(e => e.group === 'Лена'));
-    data.liza.quality = avgQuality(data.employees.filter(e => e.group === 'Лиза'));
-    data.siren.quality = data.dept.quality;
-    render(data);
-    const report = parseReport(await fetchRows(SHEET_REPORT));
-    const qByName = {};
-    for (const e of data.employees) qByName[e.name] = e.quality;
-    for (const re of Object.values(report.byEmp)) re.quality = qByName[re.name] ?? null;
-    window._report = report;
-    window._log = log;
+    const select = document.getElementById('month-select');
+    populateMonths(select);
+    select.addEventListener('change', () => loadMonth(select.value));
     ['eff-from', 'eff-to', 'q-from', 'q-to'].forEach(id => {
       document.getElementById(id).addEventListener('change', () => {
         if (window._chartsRendered) renderCharts(window._report);
       });
     });
+    await loadMonth(select.value);
   } catch (e) {
     document.getElementById('tab-overview').innerHTML =
       '<div class="error">Не удалось загрузить данные. Проверьте, что таблица открыта для доступа по ссылке.</div>';
