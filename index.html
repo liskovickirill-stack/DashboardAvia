@@ -320,6 +320,11 @@ function pctQ(n) {
   return (n * 100).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
 }
 
+function pct3(n) {
+  if (n == null) return '—';
+  return (n * 100).toLocaleString('ru-RU', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + '%';
+}
+
 function norm(s) {
   return String(s).toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
 }
@@ -471,11 +476,17 @@ function avgQuality(emps) {
   return qs.reduce((s, q) => s + q, 0) / qs.length;
 }
 
-function card(label, value, target, diff, quality) {
+function card(label, value, target, diff, quality, zhaloby, zhalobyPct, zaletyCount, zaletySum) {
   const ok = value != null && target != null && value >= target;
   const pctW = value != null && target ? Math.min(100, (value / target) * 100) : 0;
   const diffClass = diff != null && diff >= 0 ? 'ok' : 'bad';
   const qOk = quality != null && quality >= QUALITY_TARGET;
+  const zhBlock = zhaloby != null
+    ? `<div class="quality"><span>Жалобы</span><b class="${zhaloby > 0 ? 'bad' : 'ok'}">${zhaloby} · ${pct3(zhalobyPct)}</b></div>`
+    : '';
+  const zlBlock = zaletyCount != null
+    ? `<div class="quality"><span>Залёты</span><b class="${zaletyCount > 0 ? 'bad' : 'ok'}">${zaletyCount} · ${fmt(zaletySum, 0)} ₽</b></div>`
+    : '';
   return `
     <div class="card">
       <div class="label">${label}</div>
@@ -483,7 +494,9 @@ function card(label, value, target, diff, quality) {
       <div class="sub">Цель: ${fmt(target, 0)}</div>
       <div class="sub diff ${diffClass}">${diff != null ? (diff >= 0 ? '▲' : '▼') + ' ' + pct(diff) : '—'}</div>
       <div class="bar"><div class="${ok ? 'ok' : 'bad'}" style="width:${pctW}%"></div></div>
-      <div class="quality"><span>Качество</span><b class="${qOk ? 'ok' : 'bad'}">${pctQ(quality)}</b></div>
+      <div class="quality"><span>Качество</span> <b class="${qOk ? 'ok' : 'bad'}">${pctQ(quality)}</b></div>
+      ${zhBlock}
+      ${zlBlock}
     </div>`;
 }
 
@@ -515,9 +528,15 @@ function empCard(e) {
     </details>`;
 }
 
-function groupBlock(title, cls, group, rate, quality) {
+function groupBlock(title, cls, group, rate, quality, zhaloby, zhalobyPct, zaletyCount, zaletySum) {
   const ok = rate != null && rate >= RATE_TARGET;
   const sorted = group.slice().sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+  const zhLine = zhaloby != null
+    ? `<div class="group-quality">Жалобы: <span class="${zhaloby > 0 ? 'bad' : 'ok'}">${zhaloby} · ${pct3(zhalobyPct)}</span></div>`
+    : '';
+  const zlLine = zaletyCount != null
+    ? `<div class="group-quality">Залёты: <span class="${zaletyCount > 0 ? 'bad' : 'ok'}">${zaletyCount} · ${fmt(zaletySum, 0)} ₽</span></div>`
+    : '';
   return `
     <div class="group ${cls}">
       <details class="group-details" open>
@@ -526,6 +545,8 @@ function groupBlock(title, cls, group, rate, quality) {
           <div>
             <div class="group-rate ${ok ? 'ok' : 'bad'}">${fmt(rate, 2)}</div>
             <div class="group-quality">Качество: <span class="${quality != null && quality >= QUALITY_TARGET ? 'ok' : 'bad'}">${pctQ(quality)}</span></div>
+            ${zhLine}
+            ${zlLine}
           </div>
         </summary>
         <div class="emp-list">
@@ -540,10 +561,10 @@ function render(data) {
 
   const cards = `
     <div class="cards">
-      ${card('Отдел — чатов в час', dept.current, dept.target, dept.diff, dept.quality)}
-      ${card('Группа Лизы — чатов в час', liza.current, liza.target, liza.diff, liza.quality)}
-      ${card('Группа Лены — чатов в час', lena.current, lena.target, lena.diff, lena.quality)}
-      ${card('Обучение Сирена — чатов в час', siren.current, siren.target, siren.diff, siren.quality)}
+      ${card('Отдел — чатов в час', dept.current, dept.target, dept.diff, dept.quality, dept.zhaloby, dept.zhalobyPct, dept.zaletyCount, dept.zaletySum)}
+      ${card('Группа Лизы — чатов в час', liza.current, liza.target, liza.diff, liza.quality, liza.zhaloby, liza.zhalobyPct, liza.zaletyCount, liza.zaletySum)}
+      ${card('Группа Лены — чатов в час', lena.current, lena.target, lena.diff, lena.quality, lena.zhaloby, lena.zhalobyPct, lena.zaletyCount, lena.zaletySum)}
+      ${card('Обучение Сирена — чатов в час', siren.current, siren.target, siren.diff, siren.quality, null, null, null, null)}
     </div>`;
 
   const lenaEmp = employees.filter(e => e.group === 'Лена');
@@ -551,8 +572,8 @@ function render(data) {
 
   const groups = `
     <div class="groups">
-      ${groupBlock('Группа Лены', 'lena', lenaEmp, lena.current, lena.quality)}
-      ${groupBlock('Группа Лизы', 'liza', lizaEmp, liza.current, liza.quality)}
+      ${groupBlock('Группа Лены', 'lena', lenaEmp, lena.current, lena.quality, lena.zhaloby, lena.zhalobyPct, lena.zaletyCount, lena.zaletySum)}
+      ${groupBlock('Группа Лизы', 'liza', lizaEmp, liza.current, liza.quality, liza.zhaloby, liza.zhalobyPct, liza.zaletyCount, liza.zaletySum)}
     </div>`;
 
   document.getElementById('tab-overview').innerHTML = cards + groups;
@@ -765,9 +786,17 @@ function buildData(report, log, z) {
     emp.zalety = zz.zalety;
     return emp;
   });
-  const dept = { ...report.dept, quality: avgQuality(employees) };
-  const lena = { ...report.lena, quality: avgQuality(employees.filter(e => e.group === 'Лена')) };
-  const liza = { ...report.liza, quality: avgQuality(employees.filter(e => e.group === 'Лиза')) };
+  const addZhaloby = (grp) => {
+    const arr = grp === 'dept' ? employees : employees.filter(e => e.group === grp);
+    const zhaloby = arr.reduce((s, e) => s + (e.zhaloby || 0), 0);
+    const chats = arr.reduce((s, e) => s + (e.chats || 0), 0);
+    const zaletyCount = arr.reduce((s, e) => s + ((e.zalety && e.zalety.count) || 0), 0);
+    const zaletySum = arr.reduce((s, e) => s + ((e.zalety && e.zalety.sum) || 0), 0);
+    return { zhaloby, zhalobyPct: chats ? zhaloby / chats : null, zaletyCount, zaletySum };
+  };
+  const dept = { ...report.dept, quality: avgQuality(employees), ...addZhaloby('dept') };
+  const lena = { ...report.lena, quality: avgQuality(employees.filter(e => e.group === 'Лена')), ...addZhaloby('Лена') };
+  const liza = { ...report.liza, quality: avgQuality(employees.filter(e => e.group === 'Лиза')), ...addZhaloby('Лиза') };
   const siren = { ...report.siren, quality: dept.quality };
   return { employees, dept, lena, liza, siren };
 }
