@@ -420,16 +420,23 @@ function parseLog(rows) {
   return { byFull, byName, daily };
 }
 
-function getQuality(emp, log) {
-  const parts = String(emp.name).trim().split(/\s+/);
-  let arr = null;
-  for (const p of parts) {
-    const k = norm(p);
-    if (log.byName[k] && log.byName[k].length) { arr = log.byName[k]; break; }
+function qualityStats(emp, log) {
+  // Сначала точный ключ (имя + инициал), чтобы разделить однофамильцев (Никита Р. / Никита М.)
+  let arr = log.byFull[norm(emp.name)];
+  if (!arr || !arr.length) {
+    const parts = String(emp.name).trim().split(/\s+/);
+    for (const p of parts) {
+      const k = norm(p);
+      if (log.byName[k] && log.byName[k].length) { arr = log.byName[k]; break; }
+    }
   }
-  if (!arr) arr = log.byFull[norm(emp.name)];
   if (!arr || !arr.length) return null;
-  return arr.reduce((s, x) => s + x, 0) / arr.length;
+  return { sum: arr.reduce((s, x) => s + x, 0), count: arr.length };
+}
+
+function getQuality(emp, log) {
+  const st = qualityStats(emp, log);
+  return st ? st.sum / st.count : null;
 }
 
 function parseZhaloby(rows) {
@@ -470,10 +477,28 @@ function getZhalobyZalety(emp, z) {
   return { zhaloby: zh, zalety: zl };
 }
 
-function avgQuality(emps) {
-  const qs = emps.map(e => e.quality).filter(q => q != null);
-  if (!qs.length) return null;
-  return qs.reduce((s, q) => s + q, 0) / qs.length;
+function avgQuality(emps, log) {
+  // Взвешенный расчёт: сумма всех оценок ÷ все анкеты (каждая анкета весит одинаково)
+  let sum = 0, count = 0;
+  for (const e of emps) {
+    const st = qualityStats(e, log);
+    if (st) { sum += st.sum; count += st.count; }
+  }
+  return count ? sum / count : null;
+}
+
+// Взвешенное качество + анкеты РГ (по ключам лога, напр. 'елена')
+function weightedQuality(emps, log, extraKeys) {
+  let sum = 0, count = 0;
+  for (const e of emps) {
+    const st = qualityStats(e, log);
+    if (st) { sum += st.sum; count += st.count; }
+  }
+  for (const k of (extraKeys || [])) {
+    const arr = log.byName[k] || log.byFull[k];
+    if (arr && arr.length) { sum += arr.reduce((s, x) => s + x, 0); count += arr.length; }
+  }
+  return count ? sum / count : null;
 }
 
 function card(label, value, target, diff, quality, zhaloby, zhalobyPct, zaletyCount, zaletySum) {
@@ -794,9 +819,11 @@ function buildData(report, log, z) {
     const zaletySum = arr.reduce((s, e) => s + ((e.zalety && e.zalety.sum) || 0), 0);
     return { zhaloby, zhalobyPct: chats ? zhaloby / chats : null, zaletyCount, zaletySum };
   };
-  const dept = { ...report.dept, quality: avgQuality(employees), ...addZhaloby('dept') };
-  const lena = { ...report.lena, quality: avgQuality(employees.filter(e => e.group === 'Лена')), ...addZhaloby('Лена') };
-  const liza = { ...report.liza, quality: avgQuality(employees.filter(e => e.group === 'Лиза')), ...addZhaloby('Лиза') };
+  // Качество отдела: все анкеты сотрудников + анкеты РГ (Сивакина Елена = 'елена' в логе)
+  const deptQ = weightedQuality(employees, log, ['елена']);
+  const dept = { ...report.dept, quality: deptQ, ...addZhaloby('dept') };
+  const lena = { ...report.lena, quality: avgQuality(employees.filter(e => e.group === 'Лена'), log), ...addZhaloby('Лена') };
+  const liza = { ...report.liza, quality: avgQuality(employees.filter(e => e.group === 'Лиза'), log), ...addZhaloby('Лиза') };
   const siren = { ...report.siren, quality: dept.quality };
   return { employees, dept, lena, liza, siren };
 }
