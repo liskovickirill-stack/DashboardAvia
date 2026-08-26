@@ -217,10 +217,68 @@
   @media (max-width: 800px) {
     .groups { grid-template-columns: 1fr; }
   }
+
+  /* Экран входа */
+  #login-screen {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(1200px 600px at 80% -10%, #1c2333 0%, var(--bg) 55%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  #login-screen.hidden { display: none; }
+  .login-card {
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 36px 32px;
+    width: 340px;
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+  .login-card h2 { font-size: 20px; margin-bottom: 6px; }
+  .login-card p { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+  .login-card input[type=password] {
+    width: 100%;
+    background: var(--bg2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 15px;
+    margin-bottom: 14px;
+    outline: none;
+  }
+  .login-card input[type=password]:focus { border-color: var(--blue); }
+  .login-card button {
+    width: 100%;
+    background: var(--blue);
+    color: #0b1220;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .login-card button:hover { filter: brightness(1.08); }
+  .login-error { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 18px; }
 </style>
 </head>
 <body>
-<div class="container">
+<div id="login-screen">
+  <div class="login-card">
+    <h2>🔒 Дашборд</h2>
+    <p>Введите пароль для доступа</p>
+    <input type="password" id="login-pass" placeholder="Пароль" autocomplete="current-password">
+    <button id="login-btn">Войти</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<div class="container" id="app">
   <header>
     <h1>📊 Дашборд <span class="accent">эффективности</span></h1>
     <div class="header-right">
@@ -267,6 +325,57 @@
 
   <div class="note">Данные обновляются автоматически из Google-таблицы при каждом открытии страницы.</div>
 </div>
+
+<script>
+// SHA-256 хеш пароля (не храним пароль в открытом виде)
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+// Хеш пароля avia2026
+const PASS_HASH = '921c63b20909ac4159bea793ce99e00376c511af0da6143b049be3c3a430790b';
+const AUTH_KEY = 'dash_auth';
+
+async function checkAuth() {
+  if (sessionStorage.getItem(AUTH_KEY) === '1') return true;
+  return false;
+}
+
+async function initAuth() {
+  const screen = document.getElementById('login-screen');
+  const app = document.getElementById('app');
+  const pass = document.getElementById('login-pass');
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('login-error');
+
+  if (await checkAuth()) {
+    screen.classList.add('hidden');
+    app.style.display = 'block';
+    return;
+  }
+
+  app.style.display = 'none';
+  screen.classList.remove('hidden');
+
+  const tryLogin = async () => {
+    const hash = await sha256(pass.value);
+    if (hash === PASS_HASH) {
+      sessionStorage.setItem(AUTH_KEY, '1');
+      screen.classList.add('hidden');
+      app.style.display = 'block';
+      init();
+    } else {
+      err.textContent = 'Неверный пароль';
+      pass.value = '';
+      pass.focus();
+    }
+  };
+
+  btn.addEventListener('click', tryLogin);
+  pass.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+  pass.focus();
+}
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
@@ -934,7 +1043,7 @@ async function init() {
   }
 }
 
-init();
+initAuth();
 </script>
 </body>
 </html>
