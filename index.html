@@ -258,6 +258,10 @@
         </div>
         <div class="chart-wrap"><canvas id="chart-quality"></canvas></div>
       </div>
+      <div class="chart-card">
+        <h3>Динамика по месяцам (чатов в час)</h3>
+        <div class="chart-wrap"><canvas id="chart-monthly"></canvas></div>
+      </div>
     </div>
   </div>
 
@@ -611,6 +615,7 @@ function showTab(name) {
   if (name === 'charts' && !window._chartsRendered) {
     window._chartsRendered = true;
     renderCharts(window._report);
+    renderMonthlyChart();
   }
 }
 
@@ -797,6 +802,65 @@ function renderCharts(report) {
       scales: {
         x: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3140' } },
         y: { min: 0, max: 100, ticks: { color: '#8b93a7', callback: v => v + '%' }, grid: { color: '#2a3140' } }
+      }
+    }
+  });
+}
+
+function monthKeys() {
+  const now = new Date();
+  const keys = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.push(monthKey(d));
+  }
+  return keys;
+}
+
+function monthLabel(key) {
+  const [mm, yy] = key.split('.');
+  const d = new Date(2000 + Number(yy), Number(mm) - 1, 1);
+  return d.toLocaleString('ru-RU', { month: 'short' }) + ' ' + yy;
+}
+
+async function renderMonthlyChart() {
+  if (typeof Chart === 'undefined') return;
+  const canvas = document.getElementById('chart-monthly');
+  if (!canvas) return;
+  if (window._charts['monthly']) { window._charts['monthly'].destroy(); delete window._charts['monthly']; }
+  const keys = monthKeys();
+  const labels = [];
+  const dept = [];
+  const lena = [];
+  const liza = [];
+  for (const key of keys) {
+    labels.push(monthLabel(key));
+    try {
+      const rr = await fetchRows(reportUrlFor(key));
+      const report = parseReport(rr);
+      dept.push(report.dept.current);
+      lena.push(report.lena.current);
+      liza.push(report.liza.current);
+    } catch (e) {
+      dept.push(null); lena.push(null); liza.push(null);
+    }
+  }
+  window._charts['monthly'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Отдел', data: dept, backgroundColor: 'rgba(96,165,250,0.7)', borderColor: '#60a5fa', borderWidth: 1 },
+        { label: 'Группа Лены', data: lena, backgroundColor: 'rgba(52,211,153,0.7)', borderColor: '#34d399', borderWidth: 1 },
+        { label: 'Группа Лизы', data: liza, backgroundColor: 'rgba(167,139,250,0.7)', borderColor: '#a78bfa', borderWidth: 1 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#e8ecf4' } } },
+      scales: {
+        x: { ticks: { color: '#8b93a7' }, grid: { color: '#2a3140' } },
+        y: { beginAtZero: true, ticks: { color: '#8b93a7' }, grid: { color: '#2a3140' } }
       }
     }
   });
